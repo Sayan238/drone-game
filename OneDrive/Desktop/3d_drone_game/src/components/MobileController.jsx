@@ -3,12 +3,12 @@ import { Joystick } from 'react-joystick-component';
 import Peer from 'peerjs';
 
 export default function MobileController() {
-    const [status, setStatus] = useState('Connecting...');
+    const [status, setStatus] = useState('Active');
     const [peerId, setPeerId] = useState('');
     const connRef = useRef(null);
     const peerRef = useRef(null);
 
-    // Parse Peer ID from URL: #controller?id=...
+    // Parse Peer ID from URL
     useEffect(() => {
         const params = new URLSearchParams(window.location.hash.split('?')[1]);
         const id = params.get('id');
@@ -16,7 +16,7 @@ export default function MobileController() {
             setPeerId(id);
             initPeer(id);
         } else {
-            setStatus('Error: No Game ID found in URL');
+            setStatus('Error: No ID');
         }
 
         return () => {
@@ -30,31 +30,17 @@ export default function MobileController() {
         peerRef.current = peer;
 
         peer.on('open', (id) => {
-            console.log('My Peer ID:', id);
-            setStatus(`Connecting to Game (${hostId})...`);
-
+            setStatus('Connecting...');
             const conn = peer.connect(hostId);
             connRef.current = conn;
 
             conn.on('open', () => {
-                setStatus('Connected! 🎮');
-                // Send initial handshake
-                conn.send({ type: 'handshake', name: 'Mobile Controller' });
+                setStatus('Connected');
+                conn.send({ type: 'handshake', name: 'Mobile' });
             });
 
-            conn.on('close', () => {
-                setStatus('Disconnected');
-            });
-
-            conn.on('error', (err) => {
-                console.error(err);
-                setStatus('Connection Error');
-            });
-        });
-
-        peer.on('error', (err) => {
-            console.error(err);
-            setStatus('Peer Error: ' + err.type);
+            conn.on('close', () => setStatus('Disconnected'));
+            conn.on('error', () => setStatus('Error'));
         });
     };
 
@@ -64,102 +50,95 @@ export default function MobileController() {
         }
     };
 
-    // Input handlers
-    const handleMove = (e) => {
-        // e.x, e.y are usually -1 to 1? Or pixels?
-        // react-joystick-component returns x, y logic?
-        // Actually it returns { type: "move", x: number, y: number, direction: string, distance: number }
-        // We need to normalize.
-        // Assuming joystick size=100.
-        // Let's console log or check docs.
-        // Usually x/y are relative.
-        // We'll normalize in game or here.
-        // Let's send raw x/y.
-        sendData({ type: 'joystick', id: 'move', x: e.x, y: e.y });
-    };
-
-    const handleStopMove = () => {
-        sendData({ type: 'joystick', id: 'move', x: 0, y: 0 });
-    };
-
-    const handleLook = (e) => {
-        sendData({ type: 'joystick', id: 'look', x: e.x, y: e.y });
-    };
-
-    const handleStopLook = () => {
-        sendData({ type: 'joystick', id: 'look', x: 0, y: 0 });
-    };
-
-    const handleButton = (action, pressed) => {
-        sendData({ type: 'button', action, pressed });
-    };
+    // Handlers
+    const handleMove = (e) => sendData({ type: 'joystick', id: 'move', x: e.x, y: e.y });
+    const handleStopMove = () => sendData({ type: 'joystick', id: 'move', x: 0, y: 0 });
+    const handleLook = (e) => sendData({ type: 'joystick', id: 'look', x: e.x, y: e.y });
+    const handleStopLook = () => sendData({ type: 'joystick', id: 'look', x: 0, y: 0 });
+    const handleButton = (action, pressed) => sendData({ type: 'button', action, pressed });
 
     return (
         <div style={{
-            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            backgroundColor: '#111', color: '#fff', touchAction: 'none',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+            position: 'fixed', inset: 0,
+            backgroundColor: '#000', color: '#fff', touchAction: 'none',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            backgroundImage: 'radial-gradient(circle at center, #112 0%, #000 100%)'
         }}>
-            <h2 style={{ position: 'absolute', top: 10, fontSize: '1.2rem' }}>{status}</h2>
-
+            {/* Status Bar */}
             <div style={{
-                display: 'flex', flexDirection: 'row', justifyContent: 'space-between',
-                width: '100%', padding: '0 40px', boxSizing: 'border-box', marginTop: 'auto', marginBottom: 40
+                position: 'absolute', top: 0, left: 0, right: 0,
+                padding: '10px', textAlign: 'center', fontSize: '12px',
+                color: status === 'Connected' ? '#0f0' : '#f00',
+                background: 'rgba(0,0,0,0.5)', letterSpacing: '2px', fontFamily: 'monospace'
             }}>
-                {/* Left Joystick - Movement */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ marginBottom: 10 }}>MOVE</div>
+                ● {status.toUpperCase()}
+            </div>
+
+            {/* Controls Container */}
+            <div style={{
+                display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                width: '100%', height: '100%', padding: '0 5vw', boxSizing: 'border-box'
+            }}>
+
+                {/* Left Joystick - MOVE (Cyan) */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                     <Joystick
                         size={120}
-                        baseColor="#333"
-                        stickColor="#0af"
+                        baseColor="rgba(255,255,255,0.1)"
+                        stickColor="rgba(0,255,255,0.8)"
                         move={handleMove}
                         stop={handleStopMove}
                     />
+                    <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#0ff', opacity: 0.7, letterSpacing: 2 }}>MOVE</div>
                 </div>
 
                 {/* Center Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 20 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'center' }}>
                     <button
                         onPointerDown={() => handleButton('boost', true)}
                         onPointerUp={() => handleButton('boost', false)}
-                        style={btnStyle('#f00')}
-                    >BOOST 🚀</button>
-
+                        style={btnStyle}
+                    >
+                        BOOST
+                    </button>
                     <button
                         onPointerDown={() => handleButton('flip', true)}
-                        onPointerUp={() => handleButton('flip', false)} // Flip is usually trigger
-                        style={btnStyle('#fa0')}
-                    >FLIP 🔄</button>
-
-                    <button
-                        onClick={() => window.location.reload()}
-                        style={{ ...btnStyle('#555'), fontSize: '0.8rem', padding: '10px' }}
-                    >RECONNECT</button>
+                        onPointerUp={() => handleButton('flip', false)}
+                        style={{ ...btnStyle, border: '1px solid #fa0', color: '#fa0', boxShadow: '0 0 10px rgba(255,170,0,0.2)' }}
+                    >
+                        FLIP
+                    </button>
                 </div>
 
-                {/* Right Joystick - Look/Up/Down */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ marginBottom: 10 }}>LOOK / ALT</div>
+                {/* Right Joystick - ALT (Magenta) */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                     <Joystick
                         size={120}
-                        baseColor="#333"
-                        stickColor="#0f8"
+                        baseColor="rgba(255,255,255,0.1)"
+                        stickColor="rgba(255,0,255,0.8)"
                         move={handleLook}
                         stop={handleStopLook}
                     />
+                    <div style={{ fontFamily: 'monospace', fontSize: 10, color: '#f0f', opacity: 0.7, letterSpacing: 2 }}>ALT / LOOK</div>
                 </div>
-            </div>
 
-            <div style={{ position: 'absolute', bottom: 10, fontSize: '0.8rem', opacity: 0.5 }}>
-                PeerID: {peerId ? peerId.substring(0, 8) + '...' : 'None'}
             </div>
         </div>
     );
 }
 
-const btnStyle = (col) => ({
-    padding: '20px', borderRadius: '50%', border: 'none',
-    backgroundColor: col, color: '#fff', fontWeight: 'bold',
-    width: '80px', height: '80px', boxShadow: '0 0 10px ' + col
-});
+const btnStyle = {
+    background: 'rgba(0,0,0,0.3)',
+    border: '1px solid #0ff',
+    color: '#0ff',
+    padding: '15px 30px',
+    borderRadius: '30px',
+    fontFamily: 'monospace',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    letterSpacing: '2px',
+    cursor: 'pointer',
+    width: '120px',
+    backdropFilter: 'blur(4px)',
+    boxShadow: '0 0 15px rgba(0,255,255,0.2)'
+};

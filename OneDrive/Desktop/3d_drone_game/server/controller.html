@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>🚁 Drone Controller</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      background: #050a14;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Force landscape hint */
+    #rotate-hint {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: #050a14;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: #00eeff;
+      font-size: 18px;
+      letter-spacing: 0.1em;
+    }
+
+    .rotate-icon {
+      font-size: 52px;
+      animation: rot 1.5s ease-in-out infinite alternate;
+    }
+
+    @keyframes rot {
+      from {
+        transform: rotate(-20deg)
+      }
+
+      to {
+        transform: rotate(20deg)
+      }
+    }
+
+    @media (orientation:portrait) {
+      #rotate-hint {
+        display: flex;
+      }
+    }
+
+    /* Status bar */
+    #status-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.75);
+      border-bottom: 1px solid rgba(0, 238, 255, 0.15);
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      z-index: 100;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ff3333;
+      box-shadow: 0 0 6px #ff3333;
+      transition: all 0.3s;
+    }
+
+    .dot.on {
+      background: #00ff88;
+      box-shadow: 0 0 8px #00ff88;
+    }
+
+    #status-text {
+      color: #aaa;
+    }
+
+    /* Main layout — landscape: left stick | center info | right buttons */
+    #main {
+      position: fixed;
+      top: 36px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      gap: 8px;
+    }
+
+    /* ── Joystick ── */
+    .joy-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .joy-base {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 238, 255, 0.07) 0%, rgba(0, 238, 255, 0.02) 70%);
+      border: 2px solid rgba(0, 238, 255, 0.28);
+      box-shadow: 0 0 24px rgba(0, 238, 255, 0.07), inset 0 0 20px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+
+    /* crosshair lines */
+    .joy-base::before,
+    .joy-base::after {
+      content: '';
+      position: absolute;
+      background: rgba(0, 238, 255, 0.1);
+    }
+
+    .joy-base::before {
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      transform: translateY(-50%);
+    }
+
+    .joy-base::after {
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      transform: translateX(-50%);
+    }
+
+    .joy-knob {
+      position: absolute;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(0, 238, 255, 0.95), rgba(0, 100, 180, 0.85));
+      border: 2px solid rgba(0, 238, 255, 0.65);
+      box-shadow: 0 0 14px rgba(0, 238, 255, 0.5), 0 4px 10px rgba(0, 0, 0, 0.5);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      transition: box-shadow 0.1s;
+    }
+
+    .joy-knob.active {
+      box-shadow: 0 0 26px rgba(0, 238, 255, 0.9), 0 4px 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .joy-label {
+      position: absolute;
+      bottom: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: rgba(0, 238, 255, 0.45);
+      white-space: nowrap;
+    }
+
+    /* ── Center panel ── */
+    #center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .game-title {
+      font-size: 13px;
+      letter-spacing: 0.2em;
+      color: rgba(0, 238, 255, 0.5);
+    }
+
+    .indicators {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .ind {
+      width: 32px;
+      height: 22px;
+      border-radius: 5px;
+      border: 1px solid rgba(0, 238, 255, 0.15);
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: rgba(0, 238, 255, 0.3);
+      letter-spacing: 0.05em;
+      transition: all 0.1s;
+    }
+
+    .ind.on {
+      background: rgba(0, 238, 255, 0.2);
+      border-color: rgba(0, 238, 255, 0.7);
+      color: #00eeff;
+      box-shadow: 0 0 8px rgba(0, 238, 255, 0.3);
+    }
+
+    /* ── Right panel: Up / Boost / Down ── */
+    #right-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .alt-btn {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      border: 2px solid rgba(0, 238, 255, 0.3);
+      background: rgba(0, 238, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      color: rgba(0, 238, 255, 0.8);
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    .alt-btn.pressed {
+      background: rgba(0, 238, 255, 0.22);
+      border-color: rgba(0, 238, 255, 0.85);
+      box-shadow: 0 0 18px rgba(0, 238, 255, 0.45);
+      transform: scale(0.93);
+    }
+
+    #boost-btn {
+      width: 84px;
+      height: 34px;
+      border-radius: 17px;
+      border: 2px solid rgba(255, 170, 0, 0.45);
+      background: rgba(255, 170, 0, 0.07);
+      color: rgba(255, 170, 0, 0.9);
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.12em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+
+    #boost-btn.pressed {
+      background: rgba(255, 170, 0, 0.25);
+      border-color: rgba(255, 170, 0, 0.9);
+      box-shadow: 0 0 16px rgba(255, 170, 0, 0.4);
+      transform: scale(0.93);
+    }
+
+    /* ── Flip buttons grid ── */
+    .flip-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .flip-btn {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(0, 238, 255, 0.45);
+      background: radial-gradient(circle, rgba(0, 238, 255, 0.12), rgba(0, 0, 0, 0.5));
+      color: #00eeff;
+      font-size: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.1s;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      box-shadow: 0 0 8px rgba(0, 238, 255, 0.2);
+      line-height: 1;
+      gap: 1px;
+    }
+
+    .flip-btn.orange {
+      border-color: rgba(255, 153, 0, 0.5);
+      background: radial-gradient(circle, rgba(255, 153, 0, 0.12), rgba(0, 0, 0, 0.5));
+      color: #ff9900;
+      box-shadow: 0 0 8px rgba(255, 153, 0, 0.2);
+    }
+
+    .flip-btn.pressed {
+      transform: scale(0.88);
+      box-shadow: 0 0 18px rgba(0, 238, 255, 0.6);
+      background: rgba(0, 238, 255, 0.22);
+    }
+
+    .flip-btn.orange.pressed {
+      box-shadow: 0 0 18px rgba(255, 153, 0, 0.6);
+      background: rgba(255, 153, 0, 0.22);
+    }
+
+    .flip-sub {
+      font-size: 7px;
+      letter-spacing: 0.04em;
+      opacity: 0.7;
+    }
+
+    /* ── Connecting overlay ── */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 10, 20, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      z-index: 200;
+      transition: opacity 0.4s;
+    }
+
+    #overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(0, 238, 255, 0.2);
+      border-top-color: #00eeff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    #overlay h2 {
+      color: #00eeff;
+      font-size: 16px;
+      letter-spacing: 0.12em;
+    }
+
+    #overlay p {
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 11px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Portrait mode hint -->
+  <div id="rotate-hint">
+    <div class="rotate-icon">📱</div>
+    <div>Rotate your phone to landscape</div>
+  </div>
+
+  <!-- Connecting overlay -->
+  <div id="overlay">
+    <div class="spinner"></div>
+    <h2>CONNECTING…</h2>
+    <p>Connecting to drone server</p>
+  </div>
+
+  <!-- Status bar -->
+  <div id="status-bar">
+    <div class="dot" id="dot"></div>
+    <span id="status-text">DISCONNECTED</span>
+  </div>
+
+  <!-- Main landscape layout -->
+  <div id="main">
+
+    <!-- LEFT: Move joystick -->
+    <div class="joy-wrap" id="left-zone">
+      <div class="joy-base">
+        <div class="joy-knob" id="left-knob"></div>
+      </div>
+      <div class="joy-label">MOVE</div>
+    </div>
+
+    <!-- CENTER: title + indicators + flip buttons -->
+    <div id="center">
+      <div class="game-title">🚁 DRONE CTRL</div>
+      <div class="indicators">
+        <div class="ind" id="ind-fwd">FWD</div>
+        <div class="ind" id="ind-bwd">BWD</div>
+        <div class="ind" id="ind-lft">LFT</div>
+        <div class="ind" id="ind-rgt">RGT</div>
+        <div class="ind" id="ind-up">UP</div>
+        <div class="ind" id="ind-dn">DN</div>
+        <div class="ind" id="ind-bst">BST</div>
+      </div>
+      <!-- Flip buttons -->
+      <div class="flip-grid">
+        <button class="flip-btn" id="flip-rl" data-axis="z" data-dir="-1">
+          <span>↺</span><span class="flip-sub">ROLL L</span>
+        </button>
+        <button class="flip-btn" id="flip-rr" data-axis="z" data-dir="1">
+          <span>↻</span><span class="flip-sub">ROLL R</span>
+        </button>
+        <button class="flip-btn orange" id="flip-ff" data-axis="x" data-dir="1">
+          <span>⤴</span><span class="flip-sub">FRONT</span>
+        </button>
+        <button class="flip-btn orange" id="flip-bf" data-axis="x" data-dir="-1">
+          <span>⤵</span><span class="flip-sub">BACK</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Altitude + Boost -->
+    <div id="right-panel">
+      <button class="alt-btn" id="up-btn">▲</button>
+      <div id="boost-btn">BOOST</div>
+      <button class="alt-btn" id="down-btn">▼</button>
+    </div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // ── Socket ──────────────────────────────────────────────────────────
+    const socket = io();
+    const overlay = document.getElementById('overlay');
+    const dot = document.getElementById('dot');
+    const statusTxt = document.getElementById('status-text');
+
+    socket.on('connect', () => socket.emit('register', 'controller'));
+    socket.on('registered', () => {
+      overlay.classList.add('hidden');
+      dot.classList.add('on');
+      statusTxt.textContent = 'CONNECTED ✓';
+      statusTxt.style.color = '#00ff88';
+    });
+    socket.on('game-connected', () => { statusTxt.textContent = 'GAME ONLINE ✓'; });
+    socket.on('disconnect', () => {
+      dot.classList.remove('on');
+      statusTxt.textContent = 'DISCONNECTED';
+      statusTxt.style.color = '#aaa';
+      overlay.classList.remove('hidden');
+      resetState();
+    });
+
+    // ── State ───────────────────────────────────────────────────────────
+    const state = { forward: false, backward: false, left: false, right: false, up: false, down: false, boost: false };
+
+    function resetState() {
+      Object.keys(state).forEach(k => state[k] = false);
+      sendControls();
+    }
+
+    function sendControls() {
+      socket.emit('controls', { ...state });
+      // Update indicators
+      ['fwd', 'bwd', 'lft', 'rgt', 'up', 'dn', 'bst'].forEach((id, i) => {
+        const key = ['forward', 'backward', 'left', 'right', 'up', 'down', 'boost'][i];
+        document.getElementById('ind-' + id).classList.toggle('on', state[key]);
+      });
+    }
+
+    // ── Joystick ────────────────────────────────────────────────────────
+    function makeJoystick(zoneId, knobId, onMove) {
+      const zone = document.getElementById(zoneId);
+      const knob = document.getElementById(knobId);
+      const DEAD = 14, MAX = 58;
+      let tid = null;
+
+      function center() {
+        const r = zone.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }
+      function update(cx, cy) {
+        const c = center();
+        let dx = cx - c.x, dy = cy - c.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > MAX) { dx *= MAX / d; dy *= MAX / d; }
+        knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        onMove(Math.abs(dx) > DEAD ? dx / MAX : 0, Math.abs(dy) > DEAD ? dy / MAX : 0);
+      }
+      function reset() {
+        knob.style.transform = 'translate(-50%,-50%)';
+        knob.classList.remove('active');
+        onMove(0, 0);
+      }
+
+      zone.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (tid !== null) return;
+        const t = e.changedTouches[0];
+        tid = t.identifier;
+        knob.classList.add('active');
+        update(t.clientX, t.clientY);
+      }, { passive: false });
+
+      document.addEventListener('touchmove', e => {
+        if (tid === null) return;
+        e.preventDefault();
+        for (const t of e.changedTouches) {
+          if (t.identifier === tid) { update(t.clientX, t.clientY); break; }
+        }
+      }, { passive: false });
+
+      document.addEventListener('touchend', e => {
+        for (const t of e.changedTouches) {
+          if (t.identifier === tid) { tid = null; reset(); break; }
+        }
+      });
+    }
+
+    makeJoystick('left-zone', 'left-knob', (x, y) => {
+      state.forward = y < -0.3;
+      state.backward = y > 0.3;
+      state.left = x < -0.3;
+      state.right = x > 0.3;
+      sendControls();
+    });
+
+    // ── Hold buttons ────────────────────────────────────────────────────
+    function holdBtn(id, key) {
+      const el = document.getElementById(id);
+      el.addEventListener('touchstart', e => { e.preventDefault(); state[key] = true; el.classList.add('pressed'); sendControls(); }, { passive: false });
+      const rel = e => { e.preventDefault(); state[key] = false; el.classList.remove('pressed'); sendControls(); };
+      el.addEventListener('touchend', rel);
+      el.addEventListener('touchcancel', rel);
+    }
+    holdBtn('up-btn', 'up');
+    holdBtn('down-btn', 'down');
+    holdBtn('boost-btn', 'boost');
+
+    // ── Flip buttons ────────────────────────────────────────────────────
+    ['flip-rl', 'flip-rr', 'flip-ff', 'flip-bf'].forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('touchstart', e => {
+        e.preventDefault();
+        el.classList.add('pressed');
+        socket.emit('flip', {
+          axis: el.dataset.axis,
+          dir: parseFloat(el.dataset.dir)
+        });
+      }, { passive: false });
+      el.addEventListener('touchend', () => el.classList.remove('pressed'));
+      el.addEventListener('touchcancel', () => el.classList.remove('pressed'));
+    });
+
+    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  </script>
+</body>
+
+</html>
